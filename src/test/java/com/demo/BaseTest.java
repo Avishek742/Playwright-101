@@ -1,7 +1,10 @@
 package com.demo;
 
 import com.google.gson.JsonObject;
-import com.microsoft.playwright.*;
+import com.microsoft.playwright.Browser;
+import com.microsoft.playwright.BrowserContext;
+import com.microsoft.playwright.Page;
+import com.microsoft.playwright.Playwright;
 
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Method;
@@ -15,85 +18,86 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Parameters;
 
+/** Reuses one cloud browser per test class and creates a fresh context for each method. */
 public class BaseTest {
 	Playwright playwright;
 	Browser browser;
 	BrowserContext context;
 	Page page;
 	
-	Boolean sessionFailed = false;
+	boolean sessionFailed = false;
 	
 	@BeforeClass
 	@Parameters({"browserName", "platform"})
-    public void setup(Method method, String browserName, String platform) throws UnsupportedEncodingException {
+	public void setup(Method method, String browserName, String platform) throws UnsupportedEncodingException {
 		
-		String username = System.getenv("LT_USERNAME");
-		String accessKey = System.getenv("LT_ACCESS_KEY");
+		String lambdaTestUsername = System.getenv("LT_USERNAME");
+		String lambdaTestAccessKey = System.getenv("LT_ACCESS_KEY");
 		
-		if(username == null || username.isEmpty() || accessKey == null || accessKey.isEmpty()) {
-			throw new IllegalStateException("Please provide username and password");
+		if (lambdaTestUsername == null || lambdaTestUsername.isEmpty()
+				|| lambdaTestAccessKey == null || lambdaTestAccessKey.isEmpty()) {
+			throw new IllegalStateException("Set LT_USERNAME and LT_ACCESS_KEY before running the tests.");
 		}
 		
 		playwright = Playwright.create();
 		
-        JsonObject capabilities = new JsonObject();
-        JsonObject options = new JsonObject();
+		JsonObject capabilities = new JsonObject();
+		JsonObject lambdaTestOptions = new JsonObject();
 
+		capabilities.addProperty("browsername", browserName);
+		capabilities.addProperty("browserVersion", "latest");
+		lambdaTestOptions.addProperty("platform", platform);
+		lambdaTestOptions.addProperty("build", "Playwright 101 Java TestNG");
+		lambdaTestOptions.addProperty("user", lambdaTestUsername);
+		lambdaTestOptions.addProperty("accessKey", lambdaTestAccessKey);
+		lambdaTestOptions.addProperty("name", getClass().getSimpleName() + "-" + browserName + "-" + platform);
 
-        capabilities.addProperty("browsername", browserName); 
-        capabilities.addProperty("browserVersion", "latest");
-        options.addProperty("platform", platform);
-        options.addProperty("build", "Playwright 101 Java TestNG");
-        options.addProperty("user", username);
-        options.addProperty("accessKey", accessKey);
-        options.addProperty("name", getClass().getSimpleName() + "-" + browserName + "-" + platform);
-        
-        options.addProperty("network", true);
-        options.addProperty("video", true);
-        options.addProperty("visual", true);
-        options.addProperty("console", true);
-        
-        capabilities.add("LT:Options", options);
-        
-		String endpoint = "wss://cdp.lambdatest.com/playwright?capabilities=" + URLEncoder.encode(capabilities.toString(), StandardCharsets.UTF_8.name());
-        
-        browser = playwright.chromium().connect(endpoint);
+		lambdaTestOptions.addProperty("network", true);
+		lambdaTestOptions.addProperty("video", true);
+		lambdaTestOptions.addProperty("visual", true);
+		lambdaTestOptions.addProperty("console", true);
 
-        
-    }
+		capabilities.add("LT:Options", lambdaTestOptions);
+
+		String cloudEndpoint = "wss://cdp.lambdatest.com/playwright?capabilities="
+				+ URLEncoder.encode(capabilities.toString(), StandardCharsets.UTF_8.name());
+		browser = playwright.chromium().connect(cloudEndpoint);
+	}
 
 	@BeforeMethod
-    public void createPage() {
-    	context = browser.newContext();
-    	page = context.newPage();
-    }
+	public void createPage() {
+		// Isolate cookies and storage while keeping the cloud browser session open.
+		context = browser.newContext();
+		page = context.newPage();
+	}
 	
 	@AfterMethod
-	public void closePage(ITestResult result) {
-		if(result.getStatus() == ITestResult.FAILURE || result.getStatus() == ITestResult.SKIP) {
+	public void closePage(ITestResult testResult) {
+		// A later passing test must not overwrite a failure in the shared session.
+		if (testResult.getStatus() == ITestResult.FAILURE || testResult.getStatus() == ITestResult.SKIP) {
 			sessionFailed = true;
 		}
 		
-		if(page!=null) {
+		if (page != null) {
 			try {
-				JsonObject action = new JsonObject();
-				action.addProperty("action", "setTestStatus");
+				JsonObject statusAction = new JsonObject();
+				statusAction.addProperty("action", "setTestStatus");
 				
-				JsonObject arguments = new JsonObject();
-				arguments.addProperty("status", sessionFailed? "failed" : "passed");
+				JsonObject statusDetails = new JsonObject();
+				statusDetails.addProperty("status", sessionFailed ? "failed" : "passed");
 				
-				arguments.addProperty("remark", sessionFailed ? "One or more tests failed or were skipped" : "All test passed");
+				statusDetails.addProperty("remark", sessionFailed ? "One or more tests failed or were skipped" : "All tests passed");
 				
-				action.add("arguments", arguments);
+				statusAction.add("arguments", statusDetails);
 				
-				page.evaluate("_=>{}", "lambdatest_action:" + action);
+				page.evaluate("_=>{}", "lambdatest_action:" + statusAction);
 				
-			} catch (Exception e) {
-				System.err.println("Could not report cloud status: " + e.getMessage());
+			} catch (Exception reportingFailure) {
+				System.err.println("Could not report cloud status: " + reportingFailure.getMessage());
 			}
 		}
 		
-		if(context != null) {
+		if (context != null) {
 			context.close();
 			context = null;
 			page = null;
@@ -103,11 +107,11 @@ public class BaseTest {
 		
 	@AfterClass(alwaysRun = true)
 	public void disconnectFromTest() {
-		if(browser!=null) {
+		if (browser != null) {
 			browser.close();
 		}
 		
-		if(playwright != null) {
+		if (playwright != null) {
 			playwright.close();
 		}
 	}

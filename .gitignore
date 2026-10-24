@@ -8,6 +8,9 @@
 .idea/
 *.iml
 .classpath
+.vscode/
+.metadata
+.sonarlint
 .project
 .settings/
 

@@ -6,9 +6,7 @@
   	<parameter name="platform" value="Windows 10"></parameter>
   
     <classes>
-      <class name="com.demo.FirstTest"/>
-      <class name="com.demo.SecondTest"/>
-      <class name="com.demo.ThirdTest"/>
+      <class name="com.demo.AllTest"/>
     </classes>
     
   </test> <!-- Test -->
@@ -18,9 +16,7 @@
   	<parameter name="platform" value="Windows 11"></parameter>
   
     <classes>
-      <class name="com.demo.FirstTest"/>
-      <class name="com.demo.SecondTest"/>
-      <class name="com.demo.ThirdTest"/>
+      <class name="com.demo.AllTest"/>
     </classes>
     
   </test> <!-- Test -->
